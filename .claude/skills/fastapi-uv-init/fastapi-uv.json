@@ -1,0 +1,8 @@
+{
+  "id": "fastapi-uv",
+  "name": "FastAPI + uv 项目初始化",
+  "description": "使用 uv 包管理器快速创建和配置 FastAPI 项目，包括依赖安装、项目结构初始化和开发服务器启动",
+  "tags": ["python", "fastapi", "uv", "web", "api"],
+  "prompt": "帮用户使用 uv 创建一个 FastAPI 项目。请执行以下步骤：\n\n1. 检查 uv 是否已安装，如未安装则提供安装命令\n2. 在当前目录或指定目录初始化 uv 项目\n3. 添加必要的依赖：fastapi、uvicorn、python-dotenv\n4. 可选：添加开发依赖 pytest、httpx、ruff\n5. 创建基本的项目结构：\n   - main.py (FastAPI 应用入口，包含基础路由和 CORS 配置)\n   - pyproject.toml (如需要自定义配置)\n   - .env.example (环境变量示例)\n   - README.md (包含启动命令说明)\n6. 运行 uv sync 安装依赖\n7. 提供启动命令：uv run uvicorn main:app --reload\n\n如果目录已存在文件，询问用户是否覆盖或合并。\n默认使用清华 PyPI 镜像加速下载。",
+  "example": "/fastapi-uv 在当前目录创建 FastAPI 项目"
+}
