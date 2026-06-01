@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from backend.core.config import get_settings
 from backend.api.router import router
+from backend.api.v1 import kitchen_router
 
 settings = get_settings()
 
@@ -38,6 +39,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(router, prefix=settings.api_prefix)
+app.include_router(kitchen_router, prefix=settings.api_prefix)
 
 
 @app.get("/")
