@@ -1,7 +1,0 @@
-{
-    "dependencies": ["."],
-    "graphs": {
-        "chief_agent": "./backend/agents/kitchen-test.py:agent"
-    },
-    "env": ".env"
-}
