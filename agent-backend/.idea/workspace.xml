@@ -2,6 +2,26 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0ef3df07-c29b-4c6d-8a32-42bf3baee95e" name="更改" comment="">
+      <change afterPath="$PROJECT_DIR$/../.idea/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../.idea/ai-private-kitchen.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/agent-backend.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/agents/checkpoint.db" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/agents/checkpoint.db-shm" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/agents/checkpoint.db-wal" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/agents/kitchen-test.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/api/v1/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/api/v1/kitchen.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/models/kitchen.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/services/kitchen_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/kitchen-api.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/langgraph.json" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/../prompt/init.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/agents/kitchen.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/backend/agents/kitchen.ipynb" afterDir="false" />
@@ -18,8 +38,8 @@
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
       <list>
-        <option value="Python Script" />
         <option value="Jupyter Notebook" />
+        <option value="Python Script" />
       </list>
     </option>
   </component>

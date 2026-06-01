@@ -19,6 +19,8 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=3.1.0",
     "tavily-python>=0.7.24",
     "langchain-tavily>=0.2.18",
+    "langchain-anthropic>=1.4.3",
+    "langgraph-cli[inmem]>=0.4.26",
 ]
 
 [[tool.uv.index]]
