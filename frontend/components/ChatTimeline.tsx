@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { Sparkles, ArrowRight } from 'lucide-react';
 import type { Message } from '@/types/chat';
 
 interface ChatTimelineProps {
@@ -20,7 +21,7 @@ export default function ChatTimeline({ messages, isTyping }: ChatTimelineProps) 
       <div className="flex-1 overflow-y-auto p-4 bg-chef-bg flex items-center justify-center">
         <div className="text-center space-y-4 animate-fadeIn">
           <div className="w-16 h-16 mx-auto rounded-full bg-chef-accent/10 flex items-center justify-center">
-            <span className="text-2xl">🍽</span>
+            <Sparkles className="w-8 h-8 text-chef-accent" />
           </div>
           <div>
             <h2 className="font-serif text-lg tracking-premium text-chef-text">
@@ -44,89 +45,94 @@ export default function ChatTimeline({ messages, isTyping }: ChatTimelineProps) 
             key={msg.id}
             className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-slideUp`}
           >
-            {/* AI custom payload card */}
-            {!isUser && msg.customPayload && (
-              <div className="w-full max-w-[85%] bg-chef-card backdrop-blur-md rounded-2xl p-4 border border-white/20 shadow-sm space-y-3 mb-2">
+            {/* AI message bubble + session meta card */}
+            {!isUser && (
+              <div className="w-full max-w-[85%] space-y-2">
+                {/* Message content */}
                 {msg.content && (
-                  <p className="text-sm text-chef-text leading-relaxed">{msg.content}</p>
-                )}
-
-                {/* Flavor tags */}
-                {msg.customPayload.tags && msg.customPayload.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {msg.customPayload.tags.map((tag, idx) => (
-                      <span
-                        key={idx}
-                        className="text-xs bg-chef-accent/10 px-2.5 py-1 rounded-full text-chef-accent border border-chef-accent/20"
-                      >
-                        {tag}
-                      </span>
-                    ))}
+                  <div className="bg-chef-card backdrop-blur-md rounded-2xl p-4 border border-white/20 shadow-sm">
+                    <p className="text-sm text-chef-text leading-relaxed whitespace-pre-wrap">
+                      {msg.content}
+                    </p>
                   </div>
                 )}
 
-                {/* Wine pairing */}
-                {msg.customPayload.winePairing && msg.customPayload.winePairing.length > 0 && (
-                  <div className="pt-2 border-t border-white/20">
-                    <span className="text-[10px] uppercase tracking-wider text-chef-muted block mb-1.5">
-                      Wine Pairing
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {msg.customPayload.winePairing.map((wine, idx) => (
-                        <span
-                          key={idx}
-                          className="text-xs bg-white/50 px-2.5 py-1 rounded-full text-chef-text border border-white/40"
-                        >
-                          {wine}
+                {/* Session metadata from done frame */}
+                {msg.sessionMeta && (
+                  <div className="bg-chef-card/60 backdrop-blur-md rounded-2xl p-4 border border-white/15 shadow-sm space-y-3">
+                    {/* Intent */}
+                    {msg.sessionMeta.intent && (
+                      <p className="text-xs text-chef-muted">
+                        <span className="font-medium text-chef-text">意图：</span>
+                        {msg.sessionMeta.intent}
+                      </p>
+                    )}
+
+                    {/* Artifacts */}
+                    {msg.sessionMeta.artifacts && msg.sessionMeta.artifacts.length > 0 && (
+                      <div className="pt-2 border-t border-white/15">
+                        <span className="text-[10px] uppercase tracking-wider text-chef-muted block mb-1.5">
+                          Artifacts
                         </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Menu items */}
-                {msg.customPayload.menuItems && msg.customPayload.menuItems.length > 0 && (
-                  <div className="pt-2 border-t border-white/20 space-y-2">
-                    {msg.customPayload.menuItems.map((item, idx) => (
-                      <div key={idx} className="bg-white/30 rounded-xl p-3">
-                        <p className="font-medium text-sm text-chef-text">{item.name}</p>
-                        {item.description && (
-                          <p className="text-xs text-chef-muted mt-1">{item.description}</p>
-                        )}
-                        {item.tags && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {item.tags.map((tag, tagIdx) => (
-                              <span
-                                key={tagIdx}
-                                className="text-[10px] bg-chef-accent/5 px-2 py-0.5 rounded-full text-chef-muted"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {msg.sessionMeta.artifacts.map((item, idx) => (
+                            <span
+                              key={idx}
+                              className="text-xs bg-chef-accent/10 px-2.5 py-1 rounded-full text-chef-accent border border-chef-accent/20"
+                            >
+                              {item}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    ))}
+                    )}
+
+                    {/* Next steps */}
+                    {msg.sessionMeta.next_steps && msg.sessionMeta.next_steps.length > 0 && (
+                      <div className="pt-2 border-t border-white/15">
+                        <span className="text-[10px] uppercase tracking-wider text-chef-muted block mb-1.5">
+                          Suggested Next Steps
+                        </span>
+                        <div className="space-y-1">
+                          {msg.sessionMeta.next_steps.map((step, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-2 text-xs text-chef-text/80"
+                            >
+                              <ArrowRight className="w-3 h-3 text-chef-accent/60 shrink-0" />
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Standard message bubble */}
-            {(!msg.customPayload || isUser) && (
-              <div
-                className={`max-w-[75%] rounded-bubble px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
-                  isUser
-                    ? 'bg-chef-bubble text-chef-text rounded-tr-sm'
-                    : 'bg-chef-card text-chef-text rounded-tl-sm'
-                }`}
-              >
-                {msg.content}
+            {/* User message bubble */}
+            {isUser && (
+              <div className="max-w-[75%] space-y-2">
+                {msg.imageUrl && (
+                  <div className="rounded-2xl overflow-hidden border border-white/20 shadow-sm">
+                    <img
+                      src={msg.imageUrl}
+                      alt="用户上传图片"
+                      className="w-full max-h-48 object-cover"
+                    />
+                  </div>
+                )}
+                <div className="rounded-bubble bg-chef-bubble text-chef-text rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed shadow-sm">
+                  {msg.content}
+                </div>
               </div>
             )}
 
             {/* Timestamp */}
-            <span className="text-[10px] text-chef-muted/70 mt-1 px-1">{msg.timestamp}</span>
+            {msg.timestamp && (
+              <span className="text-[10px] text-chef-muted/70 mt-1 px-1">{msg.timestamp}</span>
+            )}
           </div>
         );
       })}

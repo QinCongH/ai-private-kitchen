@@ -6,13 +6,18 @@ import InputBar from '@/components/InputBar';
 import { useChatStore } from '@/store/useChatStore';
 
 export default function HomePage() {
-  const { messages, isTyping, isLoading, sendMessage } = useChatStore();
+  const { messages, isTyping, isLoading, sendMessage, stopStreaming } = useChatStore();
 
   return (
     <div className="flex flex-col h-[100dvh] bg-chef-bg">
       <Header />
       <ChatTimeline messages={messages} isTyping={isTyping} />
-      <InputBar onSendMessage={sendMessage} isLoading={isLoading} />
+      <InputBar
+        onSendMessage={sendMessage}
+        isLoading={isLoading}
+        isStreaming={isTyping}
+        onStop={stopStreaming}
+      />
     </div>
   );
 }

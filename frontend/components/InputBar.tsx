@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Mic, ArrowUp } from 'lucide-react';
+import { Mic, ArrowUp, Square, ImagePlus, X } from 'lucide-react';
 
 interface InputBarProps {
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, imageUrl?: string) => void;
   isLoading?: boolean;
+  isStreaming?: boolean;
+  onStop?: () => void;
 }
 
 const QUICK_TAGS = [
@@ -16,8 +18,14 @@ const QUICK_TAGS = [
   '快手菜谱',
 ];
 
-export default function InputBar({ onSendMessage, isLoading = false }: InputBarProps) {
+export default function InputBar({
+  onSendMessage,
+  isLoading = false,
+  isStreaming = false,
+  onStop,
+}: InputBarProps) {
   const [inputValue, setInputValue] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -29,8 +37,11 @@ export default function InputBar({ onSendMessage, isLoading = false }: InputBarP
 
   const handleSend = () => {
     if (!inputValue.trim() || isLoading) return;
-    onSendMessage(inputValue);
+    const text = inputValue;
+    const img = imageUrl;
     setInputValue('');
+    setImageUrl('');
+    onSendMessage(text, img || undefined);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -48,12 +59,28 @@ export default function InputBar({ onSendMessage, isLoading = false }: InputBarP
           <button
             key={tag}
             onClick={() => setInputValue(tag)}
-            className="whitespace-nowrap text-xs bg-white/30 text-chef-text px-4 py-1.5 rounded-full border border-white/40 hover:bg-white/50 transition active:scale-95"
+            disabled={isStreaming}
+            className="whitespace-nowrap text-xs bg-white/30 text-chef-text px-4 py-1.5 rounded-full border border-white/40 hover:bg-white/50 transition active:scale-95 disabled:opacity-40"
           >
             {tag}
           </button>
         ))}
       </div>
+
+      {/* Image URL preview */}
+      {imageUrl && (
+        <div className="flex items-center gap-2 bg-white/30 rounded-xl px-3 py-2">
+          <ImagePlus className="w-4 h-4 text-chef-muted shrink-0" />
+          <span className="text-xs text-chef-muted truncate flex-1">{imageUrl}</span>
+          <button
+            onClick={() => setImageUrl('')}
+            className="p-1 text-chef-muted hover:text-chef-text transition"
+            aria-label="移除图片"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
 
       {/* Input area */}
       <div className="flex items-end bg-white/40 border border-white/40 rounded-input p-2 pl-4 shadow-inner space-x-2">
@@ -64,26 +91,53 @@ export default function InputBar({ onSendMessage, isLoading = false }: InputBarP
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask your private chef..."
-          disabled={isLoading}
+          disabled={isLoading || isStreaming}
           className="flex-1 max-h-24 bg-transparent border-0 focus:ring-0 focus:outline-none resize-none text-sm text-chef-text placeholder-chef-muted/60 py-1 font-sans disabled:opacity-50"
         />
 
-        <button className="p-2 text-chef-text hover:opacity-70 transition" aria-label="语音输入">
-          <Mic className="w-5 h-5" />
+        {/* Image attach */}
+        <button
+          onClick={() => {
+            const url = prompt('输入图片 URL');
+            if (url) setImageUrl(url);
+          }}
+          disabled={isStreaming}
+          className="p-2 text-chef-text hover:opacity-70 transition disabled:opacity-40"
+          aria-label="添加图片"
+        >
+          <ImagePlus className="w-5 h-5" />
         </button>
 
         <button
-          onClick={handleSend}
-          disabled={!inputValue.trim() || isLoading}
-          className={`p-2.5 rounded-full text-white transition-all duration-300 shadow-md ${
-            inputValue.trim() && !isLoading
-              ? 'bg-chef-accent opacity-100 scale-100 active:scale-95'
-              : 'bg-chef-accent/40 opacity-50 scale-95 cursor-not-allowed'
-          }`}
-          aria-label="发送"
+          disabled={isStreaming}
+          className="p-2 text-chef-text hover:opacity-70 transition disabled:opacity-40"
+          aria-label="语音输入"
         >
-          <ArrowUp className="w-4 h-4" />
+          <Mic className="w-5 h-5" />
         </button>
+
+        {isStreaming ? (
+          <button
+            onClick={onStop}
+            className="p-2.5 rounded-full bg-red-500 text-white transition-all duration-300 shadow-md active:scale-95"
+            aria-label="停止生成"
+          >
+            <Square className="w-4 h-4" />
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!inputValue.trim() || isLoading}
+            className={`p-2.5 rounded-full text-white transition-all duration-300 shadow-md ${
+              inputValue.trim() && !isLoading
+                ? 'bg-chef-accent opacity-100 scale-100 active:scale-95'
+                : 'bg-chef-accent/40 opacity-50 scale-95 cursor-not-allowed'
+            }`}
+            aria-label="发送"
+          >
+            <ArrowUp className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       <p className="text-[9px] text-center text-chef-muted/50 font-sans tracking-widest uppercase">

@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { ChatSession, Message } from '@/types/chat';
+import type { ChatSession, Message, SessionMeta } from '@/types/chat';
+import * as api from '@/lib/api';
+
+/** 生成前端 session_id */
+function generateSessionId(): string {
+  return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 interface ChatState {
   sessions: ChatSession[];
@@ -7,10 +13,13 @@ interface ChatState {
   currentSessionId: string | null;
   isTyping: boolean;
   isLoading: boolean;
+  abortController: AbortController | null;
+  streamingText: string;
 
   fetchSessions: () => Promise<void>;
   fetchMessages: (sessionId: string) => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, imageUrl?: string) => Promise<void>;
+  stopStreaming: () => void;
   deleteSession: (id: string) => Promise<void>;
   createNewSession: () => void;
   setCurrentSession: (id: string) => void;
@@ -22,25 +31,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentSessionId: null,
   isTyping: false,
   isLoading: false,
+  abortController: null,
+  streamingText: '',
 
-  fetchSessions: async () => {
-    try {
-      // TODO: Replace with actual API call
-      // const res = await fetch('/api/sessions');
-      // const data = await res.json();
-      // set({ sessions: data });
-    } catch (error) {
-      console.error('Failed to fetch sessions:', error);
-    }
-  },
+  fetchSessions: async () => {},
 
   fetchMessages: async (sessionId: string) => {
     set({ isLoading: true });
     try {
-      // TODO: Replace with actual API call
-      // const res = await fetch(`/api/sessions/${sessionId}/messages`);
-      // const data = await res.json();
-      // set({ messages: data, currentSessionId: sessionId });
+      const apiMessages = await api.getSessionMessages(sessionId);
+      const messages: Message[] = apiMessages.map((m, i) => ({
+        id: `${sessionId}-${i}`,
+        role: m.role,
+        content: m.content,
+        timestamp: '',
+      }));
+      set({ messages, currentSessionId: sessionId });
     } catch (error) {
       console.error('Failed to fetch messages:', error);
     } finally {
@@ -48,68 +54,140 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async (content: string) => {
+  sendMessage: async (content: string, imageUrl?: string) => {
+    const { currentSessionId, abortController: existing } = get();
+
+    if (existing) existing.abort();
+
+    // 首次发消息时前端生成 session_id
+    const sessionId = currentSessionId ?? generateSessionId();
+
+    const ac = new AbortController();
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
       content,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      imageUrl,
     };
 
     set((state) => ({
       messages: [...state.messages, userMessage],
+      currentSessionId: sessionId,
       isTyping: true,
+      abortController: ac,
+      streamingText: '',
     }));
 
-    try {
-      // TODO: Replace with actual API call
-      // const res = await fetch('/api/chat', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     content,
-      //     sessionId: get().currentSessionId,
-      //   }),
-      // });
-      // const data = await res.json();
+    const aiId = (Date.now() + 1).toString();
+    const aiMessage: Message = {
+      id: aiId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    set((state) => ({
+      messages: [...state.messages, aiMessage],
+    }));
 
-      // Simulate AI response
-      setTimeout(() => {
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: '为您搭配的完美菜单已生成。',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          customPayload: {
-            tags: ['清雅', '时令'],
-            winePairing: ["Puligny-Montrachet '21", 'Meursault'],
-            menuItems: [
-              { name: '松茸清汤', description: '云南野生松茸，配以老母鸡慢炖高汤', tags: ['鲜香', '滋补'] },
-              { name: '香煎和牛', description: 'A5和牛，低温慢煎至五分熟', tags: ['嫩滑', '浓郁'] },
-            ],
+    let accumulated = '';
+
+    try {
+      await api.streamChat(
+        {
+          query: content,
+          session_id: sessionId,
+          image_url: imageUrl,
+        },
+        {
+          onWaiting: () => {},
+          onMessage: (chunk) => {
+            accumulated += chunk;
+            set((state) => ({
+              messages: state.messages.map((m) =>
+                m.id === aiId ? { ...m, content: accumulated } : m,
+              ),
+              streamingText: accumulated,
+            }));
           },
-        };
-        set((state) => ({
-          messages: [...state.messages, aiMessage],
-          isTyping: false,
-        }));
-      }, 1500);
-    } catch (error) {
+          onDone: (frame) => {
+            const meta: SessionMeta | undefined = frame.extra ?? undefined;
+            set((state) => {
+              const updatedMessages = state.messages.map((m) =>
+                m.id === aiId
+                  ? { ...m, content: accumulated || m.content, sessionMeta: meta }
+                  : m,
+              );
+
+              // 将当前会话加入本地 sessions 列表
+              const exists = state.sessions.find((s) => s.id === sessionId);
+              const newSessions = exists
+                ? state.sessions
+                : [
+                    {
+                      id: sessionId,
+                      title: content.slice(0, 20),
+                      lastMessage: accumulated.slice(0, 30),
+                      timestamp: new Date().toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      }),
+                    },
+                    ...state.sessions,
+                  ];
+
+              return {
+                messages: updatedMessages,
+                sessions: newSessions,
+                isTyping: false,
+                abortController: null,
+                streamingText: '',
+              };
+            });
+          },
+          onError: (errMsg) => {
+            set((state) => ({
+              messages: state.messages.map((m) =>
+                m.id === aiId ? { ...m, content: `Error: ${errMsg}` } : m,
+              ),
+              isTyping: false,
+              abortController: null,
+              streamingText: '',
+            }));
+          },
+        },
+        ac.signal,
+      );
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('Failed to send message:', error);
-      set({ isTyping: false });
+      set((state) => ({
+        messages: state.messages.map((m) =>
+          m.id === aiId ? { ...m, content: '发送失败，请稍后重试' } : m,
+        ),
+        isTyping: false,
+        abortController: null,
+        streamingText: '',
+      }));
+    }
+  },
+
+  stopStreaming: () => {
+    const { abortController } = get();
+    if (abortController) {
+      abortController.abort();
+      set({ isTyping: false, abortController: null, streamingText: '' });
     }
   },
 
   deleteSession: async (id: string) => {
     const previousSessions = get().sessions;
-
     set((state) => ({
       sessions: state.sessions.filter((s) => s.id !== id),
     }));
-
     try {
-      // TODO: Replace with actual API call
-      // await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+      await api.deleteSession(id);
     } catch (error) {
       set({ sessions: previousSessions });
       console.error('Failed to delete session:', error);
