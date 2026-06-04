@@ -13,7 +13,7 @@ from langchain_tavily import TavilySearch
 from langchain.messages import HumanMessage
 from langchain.agents import create_agent
 from langchain.agents.middleware import SummarizationMiddleware
-
+from pathlib import Path
 from app.core.exceptions import LLMCallException
 from app.schemas.chat import SessionMeta
 
@@ -30,8 +30,8 @@ model = init_chat_model(
 # ── 记忆中间件 ──────────────────────────────────────────────
 middleware = SummarizationMiddleware(
     model=model,
-    trigger=("messages", 3),
-    keep=("messages", 1),
+    trigger=("messages", 20),
+    keep=("messages", 20),
 )
 
 # ── 系统提示词 ──────────────────────────────────────────────
@@ -51,14 +51,21 @@ tavily_tool = TavilySearch(max_results=5, topic="general")
 # ── 持久化 Checkpointer ────────────────────────────────────
 import sqlite3
 
-checkpointer = SqliteSaver(sqlite3.connect("checkpoint.db", check_same_thread=False))
-checkpointer.setup()
-
+# checkpointer = SqliteSaver(sqlite3.connect("checkpoint.db", check_same_thread=False))
+# checkpointer.setup()
+_db_path = Path(__file__).parent / "checkpoint.db"
+_db_connection = sqlite3.connect(
+    str(_db_path),
+    check_same_thread=False,
+    timeout=10,
+)
+_checkpointer = SqliteSaver(_db_connection)
+_checkpointer.setup()
 # ── Agent 实例 ──────────────────────────────────────────────
 agent = create_agent(
     model=model,
     system_prompt=SYSTEM_PROMPT,
-    checkpointer=checkpointer,
+    checkpointer=_checkpointer,
     tools=[tavily_tool],
     middleware=[middleware],
 )
@@ -121,9 +128,9 @@ def get_history(thread_id: str) -> list[dict[str, str]]:
 
 def clear_session(thread_id: str) -> None:
     """清除指定会话的状态（通过 checkpoint）"""
-    config = {"configurable": {"thread_id": thread_id}}
     try:
-        agent.update_state(config, {"messages": []})
+        # 删除会话及相关消息
+        _checkpointer.delete_thread(thread_id)
     except Exception as e:
         logger.error(f"清除会话失败: {e}", exc_info=True)
 

@@ -24,6 +24,211 @@
 
 ---
 
+## 1.1 SSE 流式对话完整流程图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Client (Browser / App)                             │
+│                                                                             │
+│  ① POST /agent/chat                                                        │
+│     { query: "西红柿炒鸡蛋怎么做", session_id: "sess_001" }                 │
+│     或 POST /agent/chat/{session_id}                                       │
+│                                                                             │
+│  ⑩ 逐帧接收 SSE 数据                                                       │
+│     ┌──────────────────────────────────────────────────────────────┐        │
+│     │ data:{"type":"waiting","messages":"正在思考中..."}            │        │
+│     │ data:{"type":"message","messages":"西红柿炒"}                │        │
+│     │ data:{"type":"message","messages":"鸡蛋是一道"}              │        │
+│     │ data:{"type":"message","messages":"经典家常菜"}              │        │
+│     │ data:{"type":"done","messages":"","extra":{...}}             │        │
+│     └──────────────────────────────────────────────────────────────┘        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   API 层 — chat_router.py                                    │
+│                                                                             │
+│  ② Pydantic 校验 ChatReq                                                   │
+│     query: str (1~4096 字符)                                                │
+│     session_id: str | None                                                  │
+│     校验失败 → 422 直接返回                                                 │
+│     ↓                                                                       │
+│  ③ 无 session_id → chat_service.create_session() 自动创建                   │
+│     ↓                                                                       │
+│  ④ StreamingResponse(sse_event_stream(query, session_id))                   │
+│     headers: Content-Type: text/event-stream                                │
+│              Cache-Control: no-cache                                        │
+│              X-Accel-Buffering: no                                          │
+│                                                                             │
+│  ┌─ sse_event_stream 生成器 ─────────────────────────────────────────────┐  │
+│  │                                                                       │  │
+│  │  ⑤ yield waiting 帧                                                   │  │
+│  │     → data:{"type":"waiting","messages":"正在思考中..."}               │  │
+│  │     ↓                                                                 │  │
+│  │  ⑦ 循环消费 LLM chunk                                                 │  │
+│  │     每个 chunk 按 CHUNK_SIZE=10 切片                                   │  │
+│  │     每片 yield message 帧                                              │  │
+│  │     → data:{"type":"message","messages":"<切片>"}                      │  │
+│  │     ↓                                                                 │  │
+│  │  ⑧ 流结束，拼接 full_reply                                             │  │
+│  │     chat_service.save_turn() 持久化本轮对话                             │  │
+│  │     chat_service.build_meta() LLM 提取元数据                            │  │
+│  │     yield done 帧（携带 SessionMeta）                                   │  │
+│  │     → data:{"type":"done","messages":"","extra":{...}}                 │  │
+│  │                                                                       │  │
+│  │  异常分支：                                                            │  │
+│  │     LLMCallException → yield error 帧                                  │  │
+│  │     其他异常      → yield error 帧 "服务器内部错误"                     │  │
+│  │                                                                       │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Service 层 — chat_service.py                              │
+│                                                                             │
+│  ┌─ get_chat_stream() ───────────────────────────────────────────────────┐  │
+│  │  ⑥ thread_id = session_id or "default"                                │  │
+│  │     return stream_generate(prompt=query, thread_id=thread_id,          │  │
+│  │                             image_url=image_url)                       │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌─ save_turn() ─────────────────────────────────────────────────────────┐  │
+│  │  ⑨ 将 {role:"user", content:query} 和 {role:"assistant",              │  │
+│  │     content:full_reply} 追加到 _session_store[session_id]              │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌─ build_meta() ────────────────────────────────────────────────────────┐  │
+│  │  ⑨ 调用 build_session_meta(query, full_reply)                          │  │
+│  │     → LLM 从完整回复中提取 intent/summary/artifacts/next_steps          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌─ create_session() / get_history() / clear_session() ──────────────────┐  │
+│  │  会话管理：生成 UUID / 读取 checkpoint / 删除 checkpoint               │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Agent 层 — personal_cheif.py                              │
+│                                                                             │
+│  ┌─ stream_generate(prompt, thread_id, image_url) ──────────────────────┐  │
+│  │                                                                       │  │
+│  │  构造 HumanMessage                                                    │  │
+│  │    有 image_url → [{type:"image",url:...}, {type:"text",text:...}]    │  │
+│  │    无 image_url → 纯文本字符串                                        │  │
+│  │     ↓                                                                 │  │
+│  │  config = {configurable: {thread_id: thread_id}}                      │  │
+│  │     ↓                                                                 │  │
+│  │  agent.stream({"messages": [message]},                                │  │
+│  │               stream_mode="messages", config=config)                   │  │
+│  │     ↓                                                                 │  │
+│  │  for token, _metadata in agent.stream(...):                           │  │
+│  │      if token.content:                                                │  │
+│  │          yield token.content   ← 逐 chunk 返回给 Service 层           │  │
+│  │                                                                       │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌─ 内部组件 ────────────────────────────────────────────────────────────┐  │
+│  │                                                                       │  │
+│  │  LLM: GLM-4.1V-Thinking-Flash (智谱 AI)                               │  │
+│  │  Tools: TavilySearch(max_results=5) — 食谱搜索                        │  │
+│  │  Checkpointer: SqliteSaver(checkpoint.db) — 会话持久化                 │  │
+│  │  Middleware: SummarizationMiddleware — 消息摘要压缩                     │  │
+│  │  System Prompt: 私人厨师角色，识别食材→搜索食谱→评分排序→结构化输出    │  │
+│  │                                                                       │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌─ get_history(thread_id) ──────────────────────────────────────────────┐  │
+│  │  agent.get_state(config) → 从 checkpoint 读取消息历史                   │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌─ clear_session(thread_id) ────────────────────────────────────────────┐  │
+│  │  checkpointer.delete_thread(thread_id) → 删除 SQLite 中的会话数据      │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌─ build_session_meta(query, full_reply) ───────────────────────────────┐  │
+│  │  构造元数据提取 prompt → model.invoke() → 解析 JSON                    │  │
+│  │  失败时返回兜底数据                                                    │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        LangGraph Agent Runtime                              │
+│                                                                             │
+│  ┌─ 执行流程 ────────────────────────────────────────────────────────────┐  │
+│  │                                                                       │  │
+│  │  [START]                                                              │  │
+│  │     ↓                                                                 │  │
+│  │  [SummarizationMiddleware]  ← 消息数 >20 时自动压缩历史                │  │
+│  │     ↓                                                                 │  │
+│  │  [Model Node] ← GLM-4.1V-Thinking-Flash                               │  │
+│  │     ↓                                                                 │  │
+│  │  有 tool_calls? ──是──► [Tool Node] ← TavilySearch 执行               │  │
+│  │     │                      ↓                                          │  │
+│  │     │              结果追加到 messages，回到 Model Node                 │  │
+│  │     │                                                                 │  │
+│  │     否                                                                 │  │
+│  │     ↓                                                                 │  │
+│  │  [Checkpointer] ← 每步自动 save 到 SQLite                             │  │
+│  │     ↓                                                                 │  │
+│  │  [END] → 返回 AIMessage 给 stream_generate 的 yield                   │  │
+│  │                                                                       │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 流程步骤说明
+
+| 步骤 | 层级 | 动作 | 说明 |
+|------|------|------|------|
+| ① | Client | 发送 POST 请求 | 携带 `query`、可选 `session_id` / `image_url` |
+| ② | API 层 | Pydantic 校验 | `query` 非空且 ≤4096 字符，校验失败返回 422 |
+| ③ | API 层 | 自动创建会话 | 无 `session_id` 时调用 `create_session()` 生成 UUID |
+| ④ | API 层 | 返回 StreamingResponse | 设置 SSE 响应头，启动 `sse_event_stream` 生成器 |
+| ⑤ | API 层 | 发送 waiting 帧 | 立即通知客户端"正在思考中" |
+| ⑥ | Service 层 | 确定 thread_id | `session_id or "default"`，传给 Agent 层 |
+| ⑦ | API 层 | 循环消费 chunk | 每个 chunk 按 10 字符切片，逐片 yield message 帧 |
+| ⑧ | API 层 | 流结束处理 | 拼接完整回复，持久化会话，提取元数据 |
+| ⑨ | Service 层 | 持久化 + 提取元数据 | `save_turn()` 存储对话，`build_meta()` 调用 LLM 提取结构化摘要 |
+| ⑩ | Client | 逐帧渲染 | 按 `type` 分发：waiting 显示加载、message 追加渲染、done 展示元数据 |
+
+### 会话管理流程
+
+```
+┌──────────┐              ┌───────────────┐              ┌─────────────────┐
+│  Client  │    REST      │   API 层      │   调用        │   Agent 层      │
+│          │    JSON      │ chat_router   │              │ personal_cheif  │
+└────┬─────┘              └──────┬────────┘              └────────┬────────┘
+     │                           │                                │
+     │ POST /agent/session       │                                │
+     │──────────────────────────►│  create_session()              │
+     │                           │───────────────────────────────►│
+     │                           │  → 生成 UUID 作为 session_id    │
+     │  { session_id: "xxx" }    │◄───────────────────────────────│
+     │◄──────────────────────────│                                │
+     │                           │                                │
+     │ GET /agent/history/:id    │                                │
+     │──────────────────────────►│  get_history(session_id)       │
+     │                           │───────────────────────────────►│
+     │                           │  → agent.get_state(config)      │
+     │                           │    从 SQLite checkpoint 读取     │
+     │  { messages: [...] }      │◄───────────────────────────────│
+     │◄──────────────────────────│                                │
+     │                           │                                │
+     │ DEL /agent/session/       │                                │
+     │   delete/:id              │                                │
+     │──────────────────────────►│  clear_session(session_id)     │
+     │                           │───────────────────────────────►│
+     │                           │  → checkpointer.delete_thread() │
+     │                           │    删除 SQLite 中的会话数据      │
+     │  { status: "cleared" }    │◄───────────────────────────────│
+     │◄──────────────────────────│                                │
+```
+
+---
+
 ## 二、项目目录结构
 
 ```

@@ -128,7 +128,7 @@ async def get_history(session_id: str):
     return HistoryResponse(messages=messages)
 
 
-@router.delete("/session/{session_id}")
+@router.delete("/session/delete/{session_id}")
 async def clear_session(session_id: str):
     chat_service.clear_session(session_id)
     return {"status": "cleared"}
