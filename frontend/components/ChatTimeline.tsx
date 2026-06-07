@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { Sparkles, ArrowRight } from 'lucide-react';
 import type { Message } from '@/types/chat';
 
